@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบแสดงผล PDF </title>
+    <title>ระบบแสดงผล PDF (ไฟล์เดียว - แก้ไขล่าสุด)</title>
     <style>
+        /* CSS styles (same as before) */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -86,6 +87,7 @@
             padding: 1rem;
             margin-top: auto;
         }
+        /* End of CSS styles */
     </style>
 </head>
 <body>
@@ -96,7 +98,8 @@
     <main>
         <div class="controls">
             <label for="fileInput">เลือกไฟล์ PDF:</label>
-            <input type="file" id="fileInput" accept=".pdf">
+            <input type="file" id="fileInput" accept=".pdf" disabled> <!-- เริ่มต้นด้วย disabled -->
+            <span id="loadingStatus" style="display: none; color: orange;">กำลังโหลดไลบรารี PDF...</span>
         </div>
 
         <div id="pdfViewerContainer">
@@ -114,30 +117,22 @@
         <p>© 2567 องค์กรของคุณ</p>
     </footer>
 
-    <!-- PDF.js library from CDN (Updated Version) -->
-    <!-- Make sure this script loads and executes BEFORE the next script blocks that use pdfjsLib -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
-
-    <script>
-        // It's crucial that pdf.min.js (above) has loaded and defined pdfjsLib before this runs.
-        // Browsers execute script tags sequentially by default.
-        if (typeof pdfjsLib !== 'undefined') {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
-        } else {
-            console.error("FATAL: pdfjsLib is not defined immediately after loading pdf.min.js. The library might not have loaded correctly.");
-            // You might want to alert the user here as well if this happens,
-            // as it means the core library isn't available.
-        }
+    <!-- PDF.js library from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"
+            onload="onPdfJsLoad()"
+            onerror="onPdfJsError()">
     </script>
 
     <script>
-        // JavaScript code from script.js
+        // Main application logic
         const fileInput = document.getElementById('fileInput');
         const pdfCanvas = document.getElementById('pdfCanvas');
         const prevPageButton = document.getElementById('prevPage');
         const nextPageButton = document.getElementById('nextPage');
         const currentPageSpan = document.getElementById('currentPage');
         const totalPagesSpan = document.getElementById('totalPages');
+        const loadingStatus = document.getElementById('loadingStatus');
+
 
         let pdfDoc = null;
         let currentPageNum = 1;
@@ -146,7 +141,33 @@
         const scale = 1.5;
         let ctx = null;
 
+        function onPdfJsLoad() {
+            console.log("PDF.js library loaded successfully.");
+            if (typeof pdfjsLib !== 'undefined') {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+                console.log("PDF.js workerSrc configured.");
+                if (fileInput) fileInput.disabled = false; // Enable file input
+                if (loadingStatus) loadingStatus.style.display = 'none';
+                initializeApp(); // Initialize other parts of the app that depend on DOM
+            } else {
+                console.error("pdfjsLib is STILL undefined even after pdf.min.js onload event.");
+                if (loadingStatus) loadingStatus.textContent = 'เกิดข้อผิดพลาดในการโหลดไลบรารี PDF หลัก!';
+                alert('เกิดข้อผิดพลาดร้ายแรง: ไม่สามารถเริ่มต้น pdfjsLib ได้ กรุณาตรวจสอบ Console.');
+            }
+        }
+
+        function onPdfJsError() {
+            console.error("Failed to load PDF.js library from CDN.");
+            if (loadingStatus) {
+                loadingStatus.textContent = 'ไม่สามารถโหลดไลบรารี PDF จาก CDN!';
+                loadingStatus.style.display = 'block';
+            }
+            alert('ไม่สามารถโหลดไลบรารี PDF จาก CDN ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและ Console.');
+        }
+
+
         async function renderPage(num) {
+            // ... (renderPage function remains the same as before)
             if (!pdfDoc || typeof pdfjsLib === 'undefined') {
                 console.warn("renderPage called but pdfDoc or pdfjsLib is not ready.");
                 return;
@@ -185,6 +206,7 @@
         }
 
         function queueRenderPage(num) {
+            // ... (queueRenderPage function remains the same)
             if (pageRendering) {
                 pageNumPending = num;
             } else {
@@ -193,6 +215,7 @@
         }
 
         function onPrevPage() {
+            // ... (onPrevPage function remains the same)
             if (currentPageNum <= 1) return;
             currentPageNum--;
             queueRenderPage(currentPageNum);
@@ -200,6 +223,7 @@
         }
 
         function onNextPage() {
+            // ... (onNextPage function remains the same)
             if (!pdfDoc || currentPageNum >= pdfDoc.numPages) return;
             currentPageNum++;
             queueRenderPage(currentPageNum);
@@ -207,14 +231,15 @@
         }
 
         function updateNavButtons() {
+            // ... (updateNavButtons function remains the same)
             prevPageButton.disabled = (currentPageNum <= 1);
             nextPageButton.disabled = (!pdfDoc || currentPageNum >= pdfDoc.numPages);
         }
 
         async function loadPdf(file) {
-            // Crucial check: Is pdfjsLib available?
             if (typeof pdfjsLib === 'undefined') {
-                console.error("pdfjsLib is not defined at the start of loadPdf. Library failed to load.");
+                console.error("CRITICAL: loadPdf called but pdfjsLib is not defined.");
+                // This alert is the one you are seeing
                 alert('ไม่สามารถโหลดไลบรารี PDF (pdfjsLib is not defined). กรุณาตรวจสอบ Console.');
                 return;
             }
@@ -230,7 +255,6 @@
                 const typedarray = new Uint8Array(this.result);
                 document.body.style.cursor = 'wait';
                 try {
-                    // This is where the original error likely happened
                     const loadingTask = pdfjsLib.getDocument(typedarray);
                     pdfDoc = await loadingTask.promise;
 
@@ -240,28 +264,27 @@
                         renderPage(currentPageNum);
                     } else {
                         currentPageSpan.textContent = 0;
-                        totalPagesSpan.textContent = 0; // Ensure total is also 0
+                        totalPagesSpan.textContent = 0;
                         alert("ไฟล์ PDF นี้ไม่มีหน้าให้แสดงผล");
                     }
-                    updateNavButtons();
                 } catch (reason) {
-                    console.error("Error in loadPdf's try block:", reason); // Log the actual reason object
-                    // The reason.message might be "pdfjsLib is not defined" if it truly wasn't
-                    // or it could be another error from within getDocument if pdfjsLib *was* defined
-                    // but something else went wrong.
+                    console.error("Error in loadPdf's try block:", reason);
                     alert('ไม่สามารถโหลดไฟล์ PDF ได้: ' + (reason.message || String(reason)));
                     pdfDoc = null;
                     totalPagesSpan.textContent = 0;
                     currentPageSpan.textContent = 0;
                 } finally {
-                    updateNavButtons(); // Ensure buttons are updated regardless of success/failure
+                    updateNavButtons();
                     document.body.style.cursor = 'default';
                 }
             };
             fileReader.readAsArrayBuffer(file);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        function initializeApp() {
+            // This function is called after PDF.js is confirmed to be loaded
+            // and DOM is ready.
+            console.log("Initializing app components...");
             if (pdfCanvas) {
                  ctx = pdfCanvas.getContext('2d');
             } else {
@@ -273,16 +296,27 @@
                 fileInput.addEventListener('change', (event) => {
                     if (event.target.files && event.target.files.length > 0) {
                         const file = event.target.files[0];
-                        loadPdf(file);
+                        loadPdf(file); // loadPdf will now only be called after pdfjsLib is ready
                     }
                 });
+                console.log("File input event listener attached.");
             }
 
             if(prevPageButton) prevPageButton.addEventListener('click', onPrevPage);
             if(nextPageButton) nextPageButton.addEventListener('click', onNextPage);
 
             updateNavButtons(); // Initial button state
+            console.log("App components initialized.");
+        }
+
+        // We wait for the DOM to be ready for some initial setup,
+        // but the core PDF functionality depends on onPdfJsLoad.
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("DOM fully loaded and parsed.");
+            if (loadingStatus) loadingStatus.style.display = 'block'; // Show loading message
+            // initializeApp() is now called from onPdfJsLoad
         });
+
     </script>
 </body>
 </html>
