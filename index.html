@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบแสดงผล PDF (ไฟล์เดียว)</title>
+    <title>ระบบแสดงผล PDF (ไฟล์เดียว - แก้ไข)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -114,12 +114,20 @@
         <p>© 2567 องค์กรของคุณ</p>
     </footer>
 
-    <!-- PDF.js library from CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.107/pdf.min.js"></script>
+    <!-- PDF.js library from CDN (Updated Version) -->
+    <!-- Make sure this script loads and executes BEFORE the next script blocks that use pdfjsLib -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+
     <script>
-        // ตั้งค่า workerSrc ให้ถูกต้องกับ CDN หรือ path ที่เก็บไฟล์ worker
-        // สำหรับ CDN ของ cdnjs, worker มักจะอยู่ที่ path เดียวกันกับ pdf.min.js แต่ชื่อไฟล์คือ pdf.worker.min.js
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.107/pdf.worker.min.js';
+        // It's crucial that pdf.min.js (above) has loaded and defined pdfjsLib before this runs.
+        // Browsers execute script tags sequentially by default.
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+        } else {
+            console.error("FATAL: pdfjsLib is not defined immediately after loading pdf.min.js. The library might not have loaded correctly.");
+            // You might want to alert the user here as well if this happens,
+            // as it means the core library isn't available.
+        }
     </script>
 
     <script>
@@ -135,15 +143,14 @@
         let currentPageNum = 1;
         let pageRendering = false;
         let pageNumPending = null;
-        const scale = 1.5; // สามารถปรับขนาดการแสดงผลได้
-        let ctx = null; // จะกำหนดค่าเมื่อ canvas พร้อม
+        const scale = 1.5;
+        let ctx = null;
 
-        /**
-         * Renders a specific page of the PDF.
-         * @param {number} num The page number to render.
-         */
         async function renderPage(num) {
-            if (!pdfDoc) return; // Ensure pdfDoc is loaded
+            if (!pdfDoc || typeof pdfjsLib === 'undefined') {
+                console.warn("renderPage called but pdfDoc or pdfjsLib is not ready.");
+                return;
+            }
 
             pageRendering = true;
             document.body.style.cursor = 'wait';
@@ -154,7 +161,6 @@
                 pdfCanvas.height = viewport.height;
                 pdfCanvas.width = viewport.width;
 
-                // Render PDF page into canvas context
                 const renderContext = {
                     canvasContext: ctx,
                     viewport: viewport
@@ -169,9 +175,7 @@
                     renderPage(pageNumPending);
                     pageNumPending = null;
                 }
-
                 currentPageSpan.textContent = num;
-
             } catch (error) {
                 console.error('Error rendering page:', error);
                 alert('เกิดข้อผิดพลาดในการแสดงผลหน้า PDF: ' + error.message);
@@ -180,10 +184,6 @@
             }
         }
 
-        /**
-         * If another page rendering in progress, waits until the rendering is
-         * finised. Otherwise, executes rendering immediately.
-         */
         function queueRenderPage(num) {
             if (pageRendering) {
                 pageNumPending = num;
@@ -192,110 +192,97 @@
             }
         }
 
-        /**
-         * Displays previous page.
-         */
         function onPrevPage() {
-            if (currentPageNum <= 1) {
-                return;
-            }
+            if (currentPageNum <= 1) return;
             currentPageNum--;
             queueRenderPage(currentPageNum);
             updateNavButtons();
         }
 
-        /**
-         * Displays next page.
-         */
         function onNextPage() {
-            if (!pdfDoc || currentPageNum >= pdfDoc.numPages) {
-                return;
-            }
+            if (!pdfDoc || currentPageNum >= pdfDoc.numPages) return;
             currentPageNum++;
             queueRenderPage(currentPageNum);
             updateNavButtons();
         }
 
-        /**
-         * Updates the navigation buttons' state (enabled/disabled).
-         */
         function updateNavButtons() {
             prevPageButton.disabled = (currentPageNum <= 1);
             nextPageButton.disabled = (!pdfDoc || currentPageNum >= pdfDoc.numPages);
         }
 
-        /**
-         * Asynchronously loads PDF.
-         */
         async function loadPdf(file) {
+            // Crucial check: Is pdfjsLib available?
+            if (typeof pdfjsLib === 'undefined') {
+                console.error("pdfjsLib is not defined at the start of loadPdf. Library failed to load.");
+                alert('ไม่สามารถโหลดไลบรารี PDF (pdfjsLib is not defined). กรุณาตรวจสอบ Console.');
+                return;
+            }
+
             if (!file || file.type !== 'application/pdf') {
                 alert('กรุณาเลือกไฟล์ PDF เท่านั้น');
-                fileInput.value = ''; // Clear the input
+                if(fileInput) fileInput.value = '';
                 return;
             }
 
             const fileReader = new FileReader();
-
             fileReader.onload = async function() {
                 const typedarray = new Uint8Array(this.result);
                 document.body.style.cursor = 'wait';
                 try {
+                    // This is where the original error likely happened
                     const loadingTask = pdfjsLib.getDocument(typedarray);
                     pdfDoc = await loadingTask.promise;
 
                     totalPagesSpan.textContent = pdfDoc.numPages;
                     currentPageNum = 1;
-                    if (pdfDoc.numPages > 0) { // Check if there are pages
+                    if (pdfDoc.numPages > 0) {
                         renderPage(currentPageNum);
                     } else {
-                        currentPageSpan.textContent = 0; // Or handle no pages scenario
+                        currentPageSpan.textContent = 0;
+                        totalPagesSpan.textContent = 0; // Ensure total is also 0
                         alert("ไฟล์ PDF นี้ไม่มีหน้าให้แสดงผล");
                     }
                     updateNavButtons();
-                    document.body.style.cursor = 'default';
-
                 } catch (reason) {
-                    console.error(reason);
-                    alert('ไม่สามารถโหลดไฟล์ PDF ได้: ' + reason.message);
-                    pdfDoc = null; // Reset pdfDoc on error
+                    console.error("Error in loadPdf's try block:", reason); // Log the actual reason object
+                    // The reason.message might be "pdfjsLib is not defined" if it truly wasn't
+                    // or it could be another error from within getDocument if pdfjsLib *was* defined
+                    // but something else went wrong.
+                    alert('ไม่สามารถโหลดไฟล์ PDF ได้: ' + (reason.message || String(reason)));
+                    pdfDoc = null;
                     totalPagesSpan.textContent = 0;
                     currentPageSpan.textContent = 0;
-                    updateNavButtons();
+                } finally {
+                    updateNavButtons(); // Ensure buttons are updated regardless of success/failure
                     document.body.style.cursor = 'default';
                 }
             };
             fileReader.readAsArrayBuffer(file);
         }
 
-        // Event Listeners
         document.addEventListener('DOMContentLoaded', () => {
-            // Ensure canvas context is ready after DOM is loaded
             if (pdfCanvas) {
                  ctx = pdfCanvas.getContext('2d');
             } else {
-                console.error("Canvas element not found!");
+                console.error("Canvas element #pdfCanvas not found!");
                 return;
             }
 
             if(fileInput) {
                 fileInput.addEventListener('change', (event) => {
-                    const file = event.target.files[0];
-                    loadPdf(file);
+                    if (event.target.files && event.target.files.length > 0) {
+                        const file = event.target.files[0];
+                        loadPdf(file);
+                    }
                 });
             }
 
-            if(prevPageButton) {
-                prevPageButton.addEventListener('click', onPrevPage);
-            }
+            if(prevPageButton) prevPageButton.addEventListener('click', onPrevPage);
+            if(nextPageButton) nextPageButton.addEventListener('click', onNextPage);
 
-            if(nextPageButton) {
-                nextPageButton.addEventListener('click', onNextPage);
-            }
-
-            // Initial state
-            updateNavButtons();
+            updateNavButtons(); // Initial button state
         });
-
     </script>
 </body>
 </html>
